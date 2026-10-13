@@ -1,3 +1,10 @@
+> **Fork « Negative Lab »** — ce fork ajoute à LightCraft un panneau natif de conversion de
+> négatifs couleur argentiques (Portra 400, LomoChrome Metropolis, LomoChrome Purple…), avec
+> profils d'émulsion et calibration par charte. **Mode d'emploi : [NEGATIVE-LAB.md](NEGATIVE-LAB.md).**
+>
+> *This fork adds a native colour negative film conversion panel to LightCraft (emulsion
+> profiles, chart calibration). See [NEGATIVE-LAB.md](NEGATIVE-LAB.md) (French).*
+
 <p align="center">
   <a href="https://getartcraft.com/">
     <picture>
