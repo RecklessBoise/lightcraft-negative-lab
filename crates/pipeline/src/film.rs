@@ -40,7 +40,7 @@ pub fn measure(src: &Rgb32f, border: f32, base: Option<[f32; 3]>) -> Option<Anal
     if let Some(a) = MEMO.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(k, _)| *k == key).map(|e| e.1) {
         return Some(a);
     }
-    let a = crate::timed("film analysis", || lightcraft_film::analyze(&src.data, src.width, src.height, border, base))?;
+    let a = crate::timed("film analysis", || lightcraft_film::analyze_working(&src.data, src.width, src.height, border, base))?;
     let mut m = MEMO.lock().unwrap_or_else(|e| e.into_inner());
     m.retain(|(k, _)| *k != key);
     m.push((key, a));
@@ -62,7 +62,7 @@ fn fingerprint(src: &Rgb32f, border: f32, base: Option<[f32; 3]>) -> u64 {
 pub fn apply(img: &mut Rgb32f, conv: Option<&Converter>) {
     let Some(c) = conv else { return };
     let w = img.width.max(1);
-    crate::for_rows(&mut img.data, w, |_, row| c.convert_all(row));
+    crate::for_rows(&mut img.data, w, |_, row| c.convert_all_working(row));
 }
 
 #[cfg(test)]

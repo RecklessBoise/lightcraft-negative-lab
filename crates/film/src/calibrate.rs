@@ -5,8 +5,8 @@
 //! function of the three base-relative densities (12 numbers, least squares over the patches): the
 //! film's slopes, its dye crosstalk and the scanner's channel mix in one [`Measured`] profile.
 //!
-//! The reference colours are the chart's published nominal sRGB values (D65), converted to linear
-//! Rec.2020. They are nominal: an individual chart differs a little, and so does its lighting.
+//! The reference colours are the chart's published nominal sRGB values (D65), linearized: the fit
+//! runs in scan channels (linear sRGB primaries, see [`crate::to_scan`]). They are nominal: an individual chart differs a little, and so does its lighting.
 
 use serde::Serialize;
 
@@ -69,17 +69,13 @@ pub const CHART_NAMES: [&str; 24] = [
     "black",
 ];
 
-/// Linear sRGB (D65) → linear Rec.2020 (D65).
-const SRGB_TO_2020: [[f32; 3]; 3] = [[0.627_404, 0.329_283, 0.043_313], [0.069_097, 0.919_540, 0.011_362], [0.016_391, 0.088_013, 0.895_595]];
-
-/// The chart's reference colours in linear Rec.2020.
+/// The chart's reference colours, linear sRGB (scan channels).
 pub fn chart_reference() -> [[f32; 3]; 24] {
     CHART_SRGB8.map(|p| {
-        let lin = p.map(|v| {
+        p.map(|v| {
             let v = v as f32 / 255.0;
             if v <= 0.040_45 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
-        });
-        crate::mul(&SRGB_TO_2020, &lin)
+        })
     })
 }
 

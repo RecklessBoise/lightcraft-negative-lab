@@ -44,7 +44,7 @@ pub(crate) fn control(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &DevelopSet
 }
 
 /// Relative temperature scale for rendered (non-raw) files: −100..100 ↔ Kelvin via mired shift.
-const REL_TEMP: ControlSpec = ControlSpec {
+pub(crate) const REL_TEMP: ControlSpec = ControlSpec {
     id: "wb.tempRel",
     label: "Temp",
     section: Section::Color,
@@ -55,7 +55,7 @@ const REL_TEMP: ControlSpec = ControlSpec {
     decimals: 0,
     track: Track::Temp,
 };
-const REL_TINT: ControlSpec = ControlSpec {
+pub(crate) const REL_TINT: ControlSpec = ControlSpec {
     id: "wb.tintRel",
     label: "Tint",
     section: Section::Color,
@@ -67,10 +67,10 @@ const REL_TINT: ControlSpec = ControlSpec {
     track: Track::Tint,
 };
 
-fn k_to_rel(k: f64) -> f64 {
+pub(crate) fn k_to_rel(k: f64) -> f64 {
     ((1e6 / 6500.0 - 1e6 / k) / 0.8).clamp(-100.0, 100.0)
 }
-fn rel_to_k(r: f64) -> f64 {
+pub(crate) fn rel_to_k(r: f64) -> f64 {
     1e6 / (1e6 / 6500.0 - r * 0.8)
 }
 
@@ -518,7 +518,7 @@ pub fn sub_title(ui: &mut egui::Ui, title: &str) {
     ui.painter().text(pos2(r.left() + 24.0, r.center().y + 4.0), Align2::LEFT_CENTER, crate::i18n::tr(title), t.semibold(13.0), t.text_label);
 }
 
-fn section(
+pub(crate) fn section(
     app: &mut LightcraftApp,
     ui: &mut egui::Ui,
     d: &DevelopSettings,

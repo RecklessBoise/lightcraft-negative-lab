@@ -247,5 +247,9 @@
   "{n} photos opened for editing; each is stacked with its original": "Відкрито для редагування фото: {n}; кожне об’єднано в стос з оригіналом",
   "{name} opened in the other editor": "{name} відкрито в іншому редакторі",
   "{n} originals opened in the other editor": "Відкрито оригіналів в іншому редакторі: {n}",
-  "· {in_source} identical copies": "· ідентичних копій: {in_source}"
+  "· {in_source} identical copies": "· ідентичних копій: {in_source}",
+  "Convert {n} Selected": "Convert {n} Selected",
+  "{n} negatives converted": "{n} negatives converted",
+  "Click the centre of the {corner}": "Click the centre of the {corner}",
+  "Film calibrated (error {err} stops)": "Film calibrated (error {err} stops)"
 }

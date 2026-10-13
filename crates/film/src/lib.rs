@@ -18,7 +18,11 @@
 //! [`analyze`] and are stored with the edit ([`Analysis`]), so previews, crops and exports of the
 //! same photo convert identically. [`calibrate`] fits a profile from a photographed colour chart.
 //!
-//! Input and output are linear RGB in the pipeline's working space (Rec.2020).
+//! Densities are taken in the scan's own channels: a scanner or camera file reaches the pipeline
+//! converted to its working space (linear Rec.2020), which mixes the channels; the `*_working`
+//! entry points undo that ([`to_scan`], linear Rec.709 / sRGB primaries, which is how scanner
+//! files are tagged) before measuring and converting, and return the positive in Rec.2020.
+//! [`analyze`] and [`Converter::convert`] work in scan channels directly.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
@@ -30,6 +34,24 @@ pub use emulsions::{EMULSIONS, Emulsion};
 
 use serde::{Deserialize, Serialize};
 
+/// Linear Rec.2020 → linear Rec.709 (sRGB primaries, D65).
+const WORKING_TO_SCAN: [[f32; 3]; 3] =
+    [[1.660_491, -0.587_641, -0.072_850], [-0.124_550, 1.132_900, -0.008_349], [-0.018_151, -0.100_579, 1.118_730]];
+/// Linear Rec.709 → linear Rec.2020.
+const SCAN_TO_WORKING: [[f32; 3]; 3] = [[0.627_404, 0.329_283, 0.043_313], [0.069_097, 0.919_540, 0.011_362], [0.016_391, 0.088_013, 0.895_595]];
+
+/// A working-space (linear Rec.2020) pixel in scan channels (linear Rec.709).
+#[inline]
+pub fn to_scan(p: [f32; 3]) -> [f32; 3] {
+    mul(&WORKING_TO_SCAN, &p)
+}
+
+/// A scan-channel pixel back in the working space.
+#[inline]
+pub fn from_scan(p: [f32; 3]) -> [f32; 3] {
+    mul(&SCAN_TO_WORKING, &p)
+}
+
 /// Smallest transmittance read (a fully opaque pixel would be infinite density).
 const T_MIN: f32 = 1e-5;
 /// Scene-linear value an 18 % grey card maps to.
@@ -40,9 +62,10 @@ const KEY: f32 = 0.15;
 const LUMA: [f32; 3] = [0.2627, 0.6780, 0.0593];
 /// Most pixels [`analyze`] reads.
 const MAX_SAMPLES: usize = 1 << 17;
-/// Percentiles of the thin (shadow) and dense (highlight) ends.
-const LO_PCT: f32 = 0.005;
-const HI_PCT: f32 = 0.995;
+/// Bands (fractions of pixels ranked by density) averaged for the thin (shadow) and dense
+/// (highlight) ends; the outermost 0.1 % (dust, specular glints) is left out.
+const LO_BAND: (f32, f32) = (0.001, 0.015);
+const HI_BAND: (f32, f32) = (0.985, 0.999);
 
 /// The image statistics a conversion is anchored to, in density above [`Analysis::base`].
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -191,6 +214,13 @@ impl Converter {
             *p = self.convert(*p);
         }
     }
+
+    /// Convert a working-space (Rec.2020) buffer in place: scan channels in, Rec.2020 out.
+    pub fn convert_all_working(&self, px: &mut [[f32; 3]]) {
+        for p in px {
+            *p = from_scan(self.convert(to_scan(*p))).map(|v| v.max(0.0));
+        }
+    }
 }
 
 /// Exposure shift (log10) putting the median's green at [`KEY`].
@@ -207,13 +237,29 @@ fn key_shift(m: &[[f32; 3]; 3], q: &[f32; 3], mid: &[f32; 3]) -> f32 {
 /// given (a picked rebate colour), otherwise estimated from the clearest orange pixels anywhere in
 /// the frame. `None` for an empty or unreadable image.
 pub fn analyze(px: &[[f32; 3]], w: usize, h: usize, border: f32, base: Option<[f32; 3]>) -> Option<Analysis> {
+    analyze_with(px, w, h, border, base, |p| p)
+}
+
+/// [`analyze`] of a working-space (Rec.2020) image; `base` is in scan channels.
+pub fn analyze_working(px: &[[f32; 3]], w: usize, h: usize, border: f32, base: Option<[f32; 3]>) -> Option<Analysis> {
+    analyze_with(px, w, h, border, base, to_scan)
+}
+
+fn analyze_with(
+    px: &[[f32; 3]],
+    w: usize,
+    h: usize,
+    border: f32,
+    base: Option<[f32; 3]>,
+    map: impl Fn([f32; 3]) -> [f32; 3] + Copy,
+) -> Option<Analysis> {
     if w == 0 || h == 0 || px.len() < w.saturating_mul(h) {
         return None;
     }
     let step = ((w * h) as f64 / MAX_SAMPLES as f64).sqrt().ceil().max(1.0) as usize;
     let all: Vec<[f32; 3]> = (0..h)
         .step_by(step)
-        .flat_map(|y| (0..w).step_by(step).filter_map(move |x| px.get(y * w + x).copied()))
+        .flat_map(|y| (0..w).step_by(step).filter_map(move |x| px.get(y * w + x).copied().map(map)))
         .filter(|p| p.iter().all(|v| v.is_finite()))
         .map(|p| p.map(|v| v.max(T_MIN)))
         .collect();
@@ -227,28 +273,33 @@ pub fn analyze(px: &[[f32; 3]], w: usize, h: usize, border: f32, base: Option<[f
     let b = if border.is_finite() { border.clamp(0.0, 0.45) } else { 0.05 };
     let (x0, x1) = ((w as f32 * b) as usize, (w as f32 * (1.0 - b)).ceil() as usize);
     let (y0, y1) = ((h as f32 * b) as usize, (h as f32 * (1.0 - b)).ceil() as usize);
-    let mut dens: [Vec<f32>; 3] = Default::default();
+    let mut dens: Vec<[f32; 3]> = Vec::new();
     for y in (y0..y1.min(h)).step_by(step) {
         for x in (x0..x1.min(w)).step_by(step) {
-            let Some(p) = px.get(y * w + x) else { continue };
+            let Some(p) = px.get(y * w + x).copied().map(map) else { continue };
             if !p.iter().all(|v| v.is_finite()) {
                 continue;
             }
-            for c in 0..3 {
-                dens[c].push((base[c] / p[c].max(T_MIN)).log10());
-            }
+            dens.push(std::array::from_fn(|c| (base[c] / p[c].max(T_MIN)).log10()));
         }
     }
-    if dens[0].is_empty() {
+    if dens.is_empty() {
         return None;
     }
-    let mut out = Analysis { base, lo: [0.0; 3], hi: [0.0; 3], mid: [0.0; 3] };
-    for c in 0..3 {
-        let v = &mut dens[c];
-        out.lo[c] = percentile(v, LO_PCT);
-        out.hi[c] = percentile(v, HI_PCT);
-        out.mid[c] = percentile(v, 0.5);
-    }
+    // Rank by total density and average whole pixels in each band: the thin end is the deepest
+    // shadows, the dense end the brightest highlights, each with its own colour. (Per-channel
+    // percentiles would take each channel's extreme from a different object: the red channel's from
+    // a saturated red, and so on, which reads as a cast.)
+    dens.sort_unstable_by(|a, b| (a[0] + a[1] + a[2]).total_cmp(&(b[0] + b[1] + b[2])));
+    let band = |from: f32, to: f32| -> [f32; 3] {
+        let n = dens.len();
+        let i0 = ((n as f32 * from) as usize).min(n - 1);
+        let i1 = ((n as f32 * to).ceil() as usize).clamp(i0 + 1, n);
+        let part = dens.get(i0..i1).unwrap_or_default();
+        let k = part.len().max(1) as f32;
+        std::array::from_fn(|c| part.iter().map(|p| p[c]).sum::<f32>() / k)
+    };
+    let out = Analysis { base, lo: band(LO_BAND.0, LO_BAND.1), hi: band(HI_BAND.0, HI_BAND.1), mid: band(0.45, 0.55) };
     out.is_valid().then_some(out)
 }
 

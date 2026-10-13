@@ -18,6 +18,7 @@ pub mod keywording;
 pub mod left;
 pub mod library_problem;
 pub mod masking;
+pub mod negative_lab;
 pub mod notices;
 pub mod people;
 pub mod person;

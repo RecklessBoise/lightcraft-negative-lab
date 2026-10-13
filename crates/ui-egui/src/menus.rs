@@ -118,6 +118,7 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("panel.remove", "Remove", Some("H"), "Window"),
     ("panel.masking", "Masking", Some("M"), "Window"),
     ("panel.redeye", "Red Eye", None, "Window"),
+    ("panel.negativeLab", "Negative Lab", None, "Window"),
     ("panel.presets", "Presets", Some("Shift+P"), "Window"),
     ("panel.info", "Info", Some("I"), "Window"),
     ("panel.keywords", "Keywords", Some("K"), "Window"),
@@ -235,7 +236,7 @@ fn panel(app: &mut LightcraftApp, ctx: &egui::Context, p: RightPanel, name: &str
             app.ui.view = ViewMode::Detail;
         }
     }
-    if p != RightPanel::Masking && app.ui.tool != "wbPicker" {
+    if p != RightPanel::Masking && app.ui.tool != "wbPicker" && !(p == RightPanel::NegativeLab && app.ui.tool.starts_with("film")) {
         app.ui.tool.clear();
     }
     let _ = app.session.end_interaction();
@@ -993,6 +994,10 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
         }
         "panel.redeye" => {
             panel(app, &ctx, RightPanel::RedEye, "Red Eye");
+            Ok(Value::Null)
+        }
+        "panel.negativeLab" => {
+            panel(app, &ctx, RightPanel::NegativeLab, "Negative Lab");
             Ok(Value::Null)
         }
         "panel.info" => {

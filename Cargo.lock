@@ -3281,6 +3281,7 @@ dependencies = [
 name = "lightcraft-film"
 version = "0.7.1"
 dependencies = [
+ "image",
  "proptest",
  "serde",
  "serde_json",
@@ -3499,6 +3500,7 @@ dependencies = [
  "lightcraft-develop",
  "lightcraft-engine",
  "lightcraft-faces",
+ "lightcraft-film",
  "lightcraft-geom",
  "lightcraft-merge",
  "lightcraft-meta",

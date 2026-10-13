@@ -34,6 +34,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                     ("remove", Icon::Eraser, RightPanel::Remove, "Remove (H)"),
                     ("masking", Icon::Mask, RightPanel::Masking, "Masking (M)"),
                     ("redeye", Icon::Eye, RightPanel::RedEye, "Red Eye"),
+                    ("negativeLab", Icon::Filmstrip, RightPanel::NegativeLab, "Negative Lab"),
                 ] {
                     let on = app.ui.right == panel || (panel == RightPanel::Edit && app.ui.right == RightPanel::Profiles);
                     if icon_button(ui, id, icon, sz, on, has_photo, tip).clicked() {

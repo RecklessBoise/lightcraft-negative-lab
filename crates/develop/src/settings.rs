@@ -1179,7 +1179,7 @@ pub struct Film {
     pub border: f64,
     /// Key the image's median to a standard exposure (off: a calibrated profile's measured exposure).
     pub auto_exposure: bool,
-    /// Picked film base colour (linear transmittance); `None`: estimated.
+    /// Picked film base colour (linear transmittance, scan channels); `None`: estimated.
     pub base: Option<[f32; 3]>,
     /// Image statistics measured when the photo was converted; `None`: measured at render time.
     pub analysis: Option<lightcraft_film::Analysis>,

@@ -17,6 +17,7 @@ use crate::DevelopSettings;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SettingsGroup {
+    Film,
     Profile,
     Treatment,
     WhiteBalance,
@@ -40,7 +41,8 @@ pub enum SettingsGroup {
 }
 
 impl SettingsGroup {
-    pub const ALL: [SettingsGroup; 20] = [
+    pub const ALL: [SettingsGroup; 21] = [
+        SettingsGroup::Film,
         SettingsGroup::Profile,
         SettingsGroup::Treatment,
         SettingsGroup::WhiteBalance,
@@ -73,6 +75,7 @@ impl SettingsGroup {
 
     pub fn label(self) -> &'static str {
         match self {
+            SettingsGroup::Film => "Negative Lab",
             SettingsGroup::Profile => "Profile",
             SettingsGroup::Treatment => "Treatment",
             SettingsGroup::WhiteBalance => "White Balance",
@@ -99,6 +102,7 @@ impl SettingsGroup {
     /// Top-level JSON keys of `DevelopSettings` that belong to the group.
     pub fn keys(self) -> &'static [&'static str] {
         match self {
+            SettingsGroup::Film => &["film"],
             SettingsGroup::Profile => &["profile"],
             SettingsGroup::Treatment => &["treatment"],
             SettingsGroup::WhiteBalance => &["wb"],

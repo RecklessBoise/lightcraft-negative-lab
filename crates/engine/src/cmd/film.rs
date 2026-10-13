@@ -15,7 +15,7 @@ use crate::{Result, Session, media::SourceLevel};
 /// Measure photo `id` under film settings `f` (its border and picked base).
 fn measure(s: &mut Session, c: &str, id: PhotoId, f: &Film) -> Result<lightcraft_film::Analysis> {
     let src = s.source_now(id, SourceLevel::Preview).map_err(|e| bad(c, e))?;
-    lightcraft_film::analyze(&src.data, src.width, src.height, f.border_fraction(), f.base)
+    lightcraft_film::analyze_working(&src.data, src.width, src.height, f.border_fraction(), f.base)
         .ok_or_else(|| bad(c, "the photo has no readable pixels to measure"))
 }
 
@@ -83,7 +83,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "film.convert",
             "Convert Negative",
             ["Photo"],
-            Some("Cmd+Alt+N"),
+            Some("Alt+N"),
             "{emulsion?: id (default: keep, or generic), enabled?: bool (default true), ids?: [id] (default: the selection)} — convert colour negatives to positives: each photo is measured on its own (film base, shadows, highlights) → [{id, enabled, emulsion, name, calibrated, analysis}]",
             has_selection,
             |s, p| {
@@ -184,7 +184,7 @@ pub fn specs() -> Vec<CommandSpec> {
                         n += 1.0;
                     }
                 }
-                let base = acc.map(|v| (v / n) as f32);
+                let base = lightcraft_film::to_scan(acc.map(|v| (v / n) as f32));
                 if base.iter().any(|v| !v.is_finite() || *v <= 0.0) {
                     return Err(bad(C, "that point is black: pick the clear film between frames"));
                 }
@@ -218,7 +218,8 @@ pub fn specs() -> Vec<CommandSpec> {
                 let d = s.develop_of(id).unwrap_or_default();
                 let o = src.oriented(d.orientation);
                 let patches = lightcraft_film::calibrate::sample_chart(&o.data, o.width, o.height, corners)
-                    .ok_or_else(|| bad(C, "the chart corners are outside the photo"))?;
+                    .ok_or_else(|| bad(C, "the chart corners are outside the photo"))?
+                    .map(lightcraft_film::to_scan);
                 let base = match d.film.stored_analysis() {
                     Some(a) => a.base,
                     None => measure(s, C, id, &d.film)?.base,

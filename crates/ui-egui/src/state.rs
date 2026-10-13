@@ -37,11 +37,22 @@ pub enum RightPanel {
     Info,
     /// The profile browser (part of Edit).
     Profiles,
+    /// Negative Lab: colour negative conversion.
+    NegativeLab,
 }
 
 impl RightPanel {
     pub fn is_edit_tool(self) -> bool {
-        matches!(self, RightPanel::Edit | RightPanel::Profiles | RightPanel::Crop | RightPanel::Remove | RightPanel::Masking | RightPanel::RedEye)
+        matches!(
+            self,
+            RightPanel::Edit
+                | RightPanel::Profiles
+                | RightPanel::Crop
+                | RightPanel::Remove
+                | RightPanel::Masking
+                | RightPanel::RedEye
+                | RightPanel::NegativeLab
+        )
     }
 }
 
@@ -467,7 +478,7 @@ impl PanelWidth {
 /// The left sidebar (sources, albums, folders).
 pub const LEFT_WIDTH: PanelWidth = PanelWidth { min: 200.0, default: 268.0, max: 480.0 };
 /// The right panel (Edit, Masking, Info, …).
-pub const RIGHT_WIDTH: PanelWidth = PanelWidth { min: 250.0, default: 270.0, max: 520.0 };
+pub const RIGHT_WIDTH: PanelWidth = PanelWidth { min: 250.0, default: 270.0, max: 640.0 };
 /// The photo area the side panels always leave free (as far as their minimum widths allow).
 pub const MIN_PHOTO_WIDTH: f32 = 360.0;
 
@@ -658,6 +669,9 @@ pub struct UiState {
     pub grading_hidden: Option<(lightcraft_catalog::PhotoId, [bool; 3])>,
     /// Active on-canvas tool: "", "brush", "linear", "radial", "wbPicker", "straighten", "remove".
     pub tool: String,
+    /// Negative Lab chart calibration: the corner patches clicked so far (normalized image coords).
+    #[serde(skip)]
+    pub film_chart: Vec<[f64; 2]>,
     pub brush_size: f32,
     pub brush_feather: f32,
     pub brush_flow: f32,
@@ -1104,6 +1118,7 @@ impl Default for UiState {
             grading_mode: "3way".into(),
             grading_hidden: None,
             tool: String::new(),
+            film_chart: Vec::new(),
             brush_size: 0.04,
             brush_feather: 50.0,
             brush_flow: 60.0,
