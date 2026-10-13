@@ -13,17 +13,27 @@ use super::{CommandSpec, always, bad, bool_or, cmd, f64_req, has_active, has_sel
 use crate::{Result, Session, media::SourceLevel};
 
 /// Measure photo `id` under film settings `f` (its border and picked base).
-fn measure(s: &mut Session, c: &str, id: PhotoId, f: &Film) -> Result<lightcraft_film::Analysis> {
+/// Within the photo's crop when it has one (a strip shot whole, cropped to one frame), as the
+/// crop shows it (the photo's orientation applied).
+fn measure(s: &mut Session, c: &str, id: PhotoId, d: &DevelopSettings) -> Result<lightcraft_film::Analysis> {
     let src = s.source_now(id, SourceLevel::Preview).map_err(|e| bad(c, e))?;
-    lightcraft_film::analyze_working(&src.data, src.width, src.height, f.border_fraction(), f.base)
-        .ok_or_else(|| bad(c, "the photo has no readable pixels to measure"))
+    let f = &d.film;
+    let g = &d.crop.geometry;
+    let measured = if g.is_identity() {
+        lightcraft_film::analyze_working(&src.data, src.width, src.height, f.border_fraction(), f.base)
+    } else {
+        let o = src.oriented(d.orientation);
+        let r = [g.rect.x0, g.rect.y0, g.rect.x1, g.rect.y1].map(|v| v as f32);
+        lightcraft_film::analyze_working_in(&o.data, o.width, o.height, r, f.border_fraction(), f.base)
+    };
+    measured.ok_or_else(|| bad(c, "the photo has no readable pixels to measure"))
 }
 
 /// Apply `f` to photo `id`'s settings, re-measure it, and commit as `label`.
 fn update(s: &mut Session, c: &str, id: PhotoId, label: &str, f: impl FnOnce(&mut DevelopSettings) -> Result<()>) -> Result<Value> {
     let mut d = (*s.develop_of(id).unwrap_or_default()).clone();
     f(&mut d)?;
-    let a = measure(s, c, id, &d.film)?;
+    let a = measure(s, c, id, &d)?;
     d.film.analysis = Some(a);
     let film = d.film.clone();
     s.set_develop(id, d, label)?;
@@ -222,7 +232,7 @@ pub fn specs() -> Vec<CommandSpec> {
                     .map(lightcraft_film::to_scan);
                 let base = match d.film.stored_analysis() {
                     Some(a) => a.base,
-                    None => measure(s, C, id, &d.film)?.base,
+                    None => measure(s, C, id, &d)?.base,
                 };
                 let cal =
                     lightcraft_film::calibrate(&patches, &lightcraft_film::calibrate::chart_reference(), base).map_err(|e| bad(C, e.to_string()))?;

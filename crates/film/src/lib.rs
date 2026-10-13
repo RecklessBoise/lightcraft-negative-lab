@@ -58,6 +58,10 @@ const T_MIN: f32 = 1e-5;
 const GREY: f32 = 0.18;
 /// Where the image's median lands (a little under grey: most scenes are darker than a grey card).
 const KEY: f32 = 0.15;
+/// Where the image's highlights may reach at most (just under display white).
+const WHITE: f32 = 0.6;
+/// Density below the base (log10) beyond which a pixel is light around the film, not film.
+const CLEARER_THAN_BASE: f32 = 0.05;
 /// Rec.2020 luminance weights.
 const LUMA: [f32; 3] = [0.2627, 0.6780, 0.0593];
 /// Most pixels [`analyze`] reads.
@@ -140,7 +144,7 @@ impl Converter {
         if let Some(meas) = p.measured {
             let mut q = meas.offset;
             if p.auto_exposure {
-                let shift = key_shift(&meas.matrix, &q, &a.mid);
+                let shift = key_shift(&meas.matrix, &q, a);
                 q = q.map(|v| v + shift);
             }
             return Converter { m: meas.matrix, q, base, saturation: 1.0 };
@@ -180,7 +184,7 @@ impl Converter {
             }
         }
         let mut q = ab.map(|v| v.1);
-        let shift = key_shift(&m, &q, &a.mid);
+        let shift = key_shift(&m, &q, a);
         q = q.map(|v| v + shift);
         Converter { m, q, base, saturation: e.saturation }
     }
@@ -223,10 +227,11 @@ impl Converter {
     }
 }
 
-/// Exposure shift (log10) putting the median's green at [`KEY`].
-fn key_shift(m: &[[f32; 3]; 3], q: &[f32; 3], mid: &[f32; 3]) -> f32 {
-    let xg = m[1][0] * mid[0] + m[1][1] * mid[1] + m[1][2] * mid[2] + q[1];
-    let s = (KEY / GREY).log10() - xg;
+/// Exposure shift (log10) putting the median's green at [`KEY`], unless that would push the
+/// highlights' green past [`WHITE`] (a dark scene with a bright sky): then the highlights decide.
+fn key_shift(m: &[[f32; 3]; 3], q: &[f32; 3], a: &Analysis) -> f32 {
+    let xg = |d: &[f32; 3]| m[1][0] * d[0] + m[1][1] * d[1] + m[1][2] * d[2] + q[1];
+    let s = ((KEY / GREY).log10() - xg(&a.mid)).min((WHITE / GREY).log10() - xg(&a.hi));
     if s.is_finite() { s } else { 0.0 }
 }
 
@@ -237,18 +242,29 @@ fn key_shift(m: &[[f32; 3]; 3], q: &[f32; 3], mid: &[f32; 3]) -> f32 {
 /// given (a picked rebate colour), otherwise estimated from the clearest orange pixels anywhere in
 /// the frame. `None` for an empty or unreadable image.
 pub fn analyze(px: &[[f32; 3]], w: usize, h: usize, border: f32, base: Option<[f32; 3]>) -> Option<Analysis> {
-    analyze_with(px, w, h, border, base, |p| p)
+    analyze_with(px, w, h, FULL, border, base, |p| p)
 }
+
+/// The whole frame, as a normalized region `[x0, y0, x1, y1]`.
+pub const FULL: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
 
 /// [`analyze`] of a working-space (Rec.2020) image; `base` is in scan channels.
 pub fn analyze_working(px: &[[f32; 3]], w: usize, h: usize, border: f32, base: Option<[f32; 3]>) -> Option<Analysis> {
-    analyze_with(px, w, h, border, base, to_scan)
+    analyze_with(px, w, h, FULL, border, base, to_scan)
+}
+
+/// [`analyze_working`] of the normalized `region` `[x0, y0, x1, y1]` only (the photo's crop: one
+/// frame of a strip shot whole), the border buffer taken inside it. The film base is still looked
+/// for in the whole image (the rebate is usually outside the crop).
+pub fn analyze_working_in(px: &[[f32; 3]], w: usize, h: usize, region: [f32; 4], border: f32, base: Option<[f32; 3]>) -> Option<Analysis> {
+    analyze_with(px, w, h, region, border, base, to_scan)
 }
 
 fn analyze_with(
     px: &[[f32; 3]],
     w: usize,
     h: usize,
+    region: [f32; 4],
     border: f32,
     base: Option<[f32; 3]>,
     map: impl Fn([f32; 3]) -> [f32; 3] + Copy,
@@ -271,8 +287,18 @@ fn analyze_with(
         _ => estimate_base(&all)?,
     };
     let b = if border.is_finite() { border.clamp(0.0, 0.45) } else { 0.05 };
-    let (x0, x1) = ((w as f32 * b) as usize, (w as f32 * (1.0 - b)).ceil() as usize);
-    let (y0, y1) = ((h as f32 * b) as usize, (h as f32 * (1.0 - b)).ceil() as usize);
+    let r = if region.iter().all(|v| v.is_finite()) { region.map(|v| v.clamp(0.0, 1.0)) } else { FULL };
+    let (rx0, rx1) = (r[0].min(r[2]), r[0].max(r[2]));
+    let (ry0, ry1) = (r[1].min(r[3]), r[1].max(r[3]));
+    let (rw, rh) = (rx1 - rx0, ry1 - ry0);
+    if rw <= 0.0 || rh <= 0.0 {
+        return None;
+    }
+    let (x0, x1) = ((w as f32 * (rx0 + rw * b)) as usize, (w as f32 * (rx1 - rw * b)).ceil() as usize);
+    let (y0, y1) = ((h as f32 * (ry0 + rh * b)) as usize, (h as f32 * (ry1 - rh * b)).ceil() as usize);
+    // sample the region as densely as the whole image would be
+    let area = (x1.saturating_sub(x0)).saturating_mul(y1.saturating_sub(y0)).max(1);
+    let step = ((area as f64 / MAX_SAMPLES as f64).sqrt().ceil().max(1.0) as usize).min(step);
     let mut dens: Vec<[f32; 3]> = Vec::new();
     for y in (y0..y1.min(h)).step_by(step) {
         for x in (x0..x1.min(w)).step_by(step) {
@@ -280,7 +306,13 @@ fn analyze_with(
             if !p.iter().all(|v| v.is_finite()) {
                 continue;
             }
-            dens.push(std::array::from_fn(|c| (base[c] / p[c].max(T_MIN)).log10()));
+            let d: [f32; 3] = std::array::from_fn(|c| (base[c] / p[c].max(T_MIN)).log10());
+            // clearer than the film base: not image but the light around the film (sprocket
+            // holes, the light table, a sleeve), which no exposure can produce
+            if d.iter().any(|v| *v < -CLEARER_THAN_BASE) {
+                continue;
+            }
+            dens.push(d);
         }
     }
     if dens.is_empty() {
@@ -312,7 +344,9 @@ fn estimate_base(px: &[[f32; 3]]) -> Option<[f32; 3]> {
     if peak <= 0.0 {
         return None;
     }
-    let orange: Vec<[f32; 3]> = px.iter().copied().filter(|p| p[0] > p[1] && p[1] > p[2] && p[2] < 0.85 * p[0]).collect();
+    // a real C-41 mask is strongly orange (blue well under half of red); a warm white (a sleeve,
+    // a light table shot with a warm white balance) is not
+    let orange: Vec<[f32; 3]> = px.iter().copied().filter(|p| p[1] < 0.9 * p[0] && p[2] < 0.7 * p[0] && p[2] < p[1]).collect();
     let pool = if orange.len() >= 16 { orange } else { px.iter().copied().filter(|p| p[1] < 0.995 * peak).collect::<Vec<_>>() };
     let pool = if pool.is_empty() { px.to_vec() } else { pool };
     // clearest 0.5 % by green, averaged
