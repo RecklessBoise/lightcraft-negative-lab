@@ -117,6 +117,10 @@ pub struct DevelopSettings {
     /// the default, so settings without HDR keep their JSON and `hash64` (and every cached preview stays valid).
     #[serde(skip_serializing_if = "Hdr::is_default")]
     pub hdr: Hdr,
+    /// Negative Lab: colour negative film conversion, applied first (before white balance). Not written while
+    /// it is the default, so settings without it keep their JSON and `hash64`.
+    #[serde(skip_serializing_if = "Film::is_default")]
+    pub film: Film,
     pub curve: ToneCurve,
     pub color: ColorAdj,
     pub mixer: Mixer,
@@ -153,6 +157,7 @@ impl Default for DevelopSettings {
             wb: WhiteBalance::default(),
             light: Light::default(),
             hdr: Hdr::default(),
+            film: Film::default(),
             curve: ToneCurve::default(),
             color: ColorAdj::default(),
             mixer: Mixer::default(),
@@ -1155,6 +1160,79 @@ impl Hdr {
         }
         let ev = if self.max_ev.is_finite() { self.max_ev } else { Hdr::DEFAULT_MAX_EV };
         (ev.clamp(0.0, Hdr::MAX_EV_LIMIT) as f32).exp2()
+    }
+}
+
+/// Negative Lab: converting a scanned colour negative to a positive (see `lightcraft_film`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Film {
+    /// The photo is a colour negative to convert.
+    pub enabled: bool,
+    /// Emulsion profile id (`lightcraft_film::EMULSIONS`); unknown ids convert with the generic profile.
+    pub emulsion: String,
+    /// 0..100: 0 trusts the emulsion profile's colour balance, 100 neutralizes the image's thin and dense ends.
+    pub neutralize: f64,
+    /// 0..200 %: strength of the dye crosstalk correction (colour separation).
+    pub separation: f64,
+    /// 0..45 %: share of each edge left out of the analysis (film rebate, holder).
+    pub border: f64,
+    /// Key the image's median to a standard exposure (off: a calibrated profile's measured exposure).
+    pub auto_exposure: bool,
+    /// Picked film base colour (linear transmittance); `None`: estimated.
+    pub base: Option<[f32; 3]>,
+    /// Image statistics measured when the photo was converted; `None`: measured at render time.
+    pub analysis: Option<lightcraft_film::Analysis>,
+    /// A chart-calibrated profile replacing the emulsion model.
+    pub measured: Option<lightcraft_film::Measured>,
+}
+
+impl Default for Film {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            emulsion: lightcraft_film::emulsions::GENERIC.to_string(),
+            neutralize: 100.0,
+            separation: 100.0,
+            border: 5.0,
+            auto_exposure: true,
+            base: None,
+            analysis: None,
+            measured: None,
+        }
+    }
+}
+
+impl Film {
+    /// Whether these are the default film settings (no conversion, nothing changed).
+    pub fn is_default(&self) -> bool {
+        *self == Film::default()
+    }
+
+    /// The analysis to convert with: the stored one against the picked base, when both are usable.
+    pub fn stored_analysis(&self) -> Option<lightcraft_film::Analysis> {
+        let a = self.analysis.filter(|a| a.is_valid())?;
+        Some(match self.base {
+            Some(b) if b.iter().all(|v| v.is_finite() && *v > 0.0) => a.with_base(b),
+            _ => a,
+        })
+    }
+
+    /// The conversion parameters for these settings.
+    pub fn params(&self) -> lightcraft_film::Params<'_> {
+        let f = |v: f64, d: f64| if v.is_finite() { v } else { d };
+        lightcraft_film::Params {
+            emulsion: lightcraft_film::emulsions::find(&self.emulsion),
+            neutralize: (f(self.neutralize, 100.0) / 100.0) as f32,
+            separation: (f(self.separation, 100.0) / 100.0) as f32,
+            auto_exposure: self.auto_exposure,
+            measured: self.measured.as_ref().filter(|m| m.matrix.iter().flatten().chain(m.offset.iter()).all(|v| v.is_finite())),
+        }
+    }
+
+    /// The analysis border as a fraction of each edge.
+    pub fn border_fraction(&self) -> f32 {
+        if self.border.is_finite() { (self.border / 100.0).clamp(0.0, 0.45) as f32 } else { 0.05 }
     }
 }
 

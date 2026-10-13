@@ -3203,6 +3203,7 @@ name = "lightcraft-develop"
 version = "0.7.1"
 dependencies = [
  "lightcraft-color",
+ "lightcraft-film",
  "lightcraft-geom",
  "miniz_oxide 0.8.9",
  "proptest",
@@ -3226,6 +3227,7 @@ dependencies = [
  "lightcraft-develop",
  "lightcraft-faces",
  "lightcraft-fetch",
+ "lightcraft-film",
  "lightcraft-geocode",
  "lightcraft-geom",
  "lightcraft-gpu",
@@ -3388,6 +3390,7 @@ dependencies = [
  "image",
  "lightcraft-color",
  "lightcraft-develop",
+ "lightcraft-film",
  "lightcraft-geom",
  "lightcraft-inpaint",
  "lightcraft-raster",

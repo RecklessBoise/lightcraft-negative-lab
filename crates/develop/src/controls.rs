@@ -28,6 +28,7 @@ pub enum Section {
     Calibration,
     PointColor,
     RedEye,
+    Film,
 }
 
 impl Section {
@@ -49,6 +50,7 @@ impl Section {
             Section::Calibration => "Calibration",
             Section::PointColor => "Point Color",
             Section::RedEye => "Red Eye",
+            Section::Film => "Negative Lab",
         }
     }
 }
@@ -177,6 +179,9 @@ controls! {
     "light.shadows" => light.shadows, "Shadows", Light, -100, 100, 0, 1, 0, Centered;
     "light.whites" => light.whites, "Whites", Light, -100, 100, 0, 1, 0, Centered;
     "light.blacks" => light.blacks, "Blacks", Light, -100, 100, 0, 1, 0, Centered;
+    "film.neutralize" => film.neutralize, "Neutralize", Film, 0, 100, 100, 1, 0, Plain;
+    "film.separation" => film.separation, "Color Separation", Film, 0, 200, 100, 1, 0, Plain;
+    "film.border" => film.border, "Border Buffer", Film, 0, 45, 5, 0.5, 1, Plain;
     "hdr.maxEv" => hdr.max_ev, "HDR Headroom", Light, 0, 5, 3, 0.1, 1, Plain;
     "hdr.sdrBrightness" => hdr.sdr_brightness, "SDR Brightness", Light, -100, 100, 0, 1, 0, Centered;
     "hdr.sdrContrast" => hdr.sdr_contrast, "SDR Contrast", Light, -100, 100, 0, 1, 0, Centered;

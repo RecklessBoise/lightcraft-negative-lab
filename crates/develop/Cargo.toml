@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 lightcraft-geom = { workspace = true }
 lightcraft-color = { workspace = true }
+lightcraft-film = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 miniz_oxide = { workspace = true }

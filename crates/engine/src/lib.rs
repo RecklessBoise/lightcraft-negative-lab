@@ -1003,6 +1003,8 @@ mod tests_face_recognize;
 #[cfg(test)]
 mod tests_filesystem_history;
 #[cfg(test)]
+mod tests_film;
+#[cfg(test)]
 mod tests_folders;
 #[cfg(test)]
 mod tests_forget_local;

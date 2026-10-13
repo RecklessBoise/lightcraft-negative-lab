@@ -28,6 +28,7 @@ pub mod blemish;
 pub mod colorops;
 pub mod cull;
 pub mod dust;
+pub mod film;
 pub mod finish;
 pub mod geometry;
 pub mod local;
@@ -377,6 +378,8 @@ pub struct Plan<'a> {
     pub keep: Option<PixelWindow>,
     /// The source's segmentation mattes ([`SourceInfo::mattes`]).
     pub mattes: Option<Arc<masks::Mattes>>,
+    /// The colour negative conversion, when the photo is a negative ([`film`]).
+    pub film: Option<lightcraft_film::Converter>,
 }
 
 /// Long edge of the small render a windowed render estimates the whole frame's airlight from.
@@ -427,7 +430,9 @@ pub fn plan<'a>(src: &Rgb32f, info: &SourceInfo, s: &'a DevelopSettings, req: &R
     let (wb_t, wb_tint) = local::effective_wb(info, s);
     let eyes = redeye::resolve(src, &s.red_eye, s.orientation, &frame, w, h, px_per_long);
     let d = &s.detail;
+    let film = film::converter(src, s);
     let pre_nr_key = hash_of((
+        format!("{film:?}"),
         geo,
         [wb_t, wb_tint, info.as_shot_temp, info.as_shot_tint].map(f64::to_bits),
         format!("{:?}", s.spots),
@@ -439,11 +444,14 @@ pub fn plan<'a>(src: &Rgb32f, info: &SourceInfo, s: &'a DevelopSettings, req: &R
         src_long,
     ));
     let lin_key = hash_of((pre_nr_key, [d.nr_luminance, d.nr_detail, d.nr_color, d.nr_color_detail, d.nr_color_smoothness].map(f64::to_bits)));
-    Plan { settings, frame, w, h, px_per_long, src_long, geo, lin_key, pre_nr_key, eyes, fixed_air, keep, mattes: info.mattes.clone() }
+    Plan { settings, frame, w, h, px_per_long, src_long, geo, lin_key, pre_nr_key, eyes, fixed_air, keep, mattes: info.mattes.clone(), film }
 }
 
-/// Whether the scene-linear stage needs work only the CPU does (defringe, spot removal).
+/// Whether the scene-linear stage needs work only the CPU does (negative conversion, defringe, spot removal).
 pub fn lin_needs_cpu(s: &DevelopSettings, info: &SourceInfo) -> bool {
+    if film::enabled(s) {
+        return true;
+    }
     let o = &s.optics;
     let defringe = s.section_enabled("optics") && (o.defringe_purple_amount > 0.0 || o.defringe_green_amount > 0.0);
     defringe || !s.spots.is_empty() || local_tone::enabled(info, s)
@@ -453,6 +461,8 @@ pub fn lin_needs_cpu(s: &DevelopSettings, info: &SourceInfo) -> bool {
 /// scene-linear stage, in place.
 pub fn lin_cpu(img: &mut Rgb32f, info: &SourceInfo, p: &Plan<'_>) {
     let s = &*p.settings;
+    // a negative becomes a positive before anything else looks at it
+    film::apply(img, p.film.as_ref());
     // (before the white balance: the gain's input is the as-shot development, as in the file)
     local_tone::apply(img, info, p);
     local::white_balance(img, info, s);
