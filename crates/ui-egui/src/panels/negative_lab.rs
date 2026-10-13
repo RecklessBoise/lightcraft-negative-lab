@@ -168,12 +168,15 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             let _ = app.run("film.set", json!({"autoExposure": auto}));
         }
     });
-    if f.enabled
-        && text_button(ui, "filmMeasure", crate::i18n::tr("Measure Again"), false)
-            .on_hover_text(crate::i18n::tr("Measure the negative again (after a new crop or border)"))
-            .clicked()
-    {
-        let _ = app.run("film.analyze", json!({}));
+    if f.enabled {
+        padded(ui, |ui| {
+            if text_button(ui, "filmMeasure", crate::i18n::tr("Measure Again"), false)
+                .on_hover_text(crate::i18n::tr("Measure the negative again (after a new crop or border)"))
+                .clicked()
+            {
+                let _ = app.run("film.analyze", json!({}));
+            }
+        });
     }
     ui.add_space(8.0);
     divider(ui);
