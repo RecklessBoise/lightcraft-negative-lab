@@ -1,0 +1,16 @@
+[package]
+name = "lightcraft-film"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "LightCraft film negative conversion: film-base analysis, density-domain inversion, emulsion profiles, chart calibration (L0)"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }

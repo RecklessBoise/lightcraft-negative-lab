@@ -3276,6 +3276,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lightcraft-film"
+version = "0.7.1"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lightcraft-geocode"
 version = "0.7.1"
 dependencies = [
